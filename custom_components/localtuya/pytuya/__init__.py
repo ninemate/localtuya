@@ -1198,6 +1198,7 @@ async def connect(
 # --- TinyTuya backend shim for protocol >= 3.5 (spaces-only indent) ---
 import asyncio
 import logging
+import time
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -1237,34 +1238,37 @@ class _TTInterface:
                 pass
         self._dps_to_request = {}
         self._first_status = True
-        self._first_status = True  # els hívásnál teljes DPID-felderítés
+        self._first_status = True  # els hívásnál teljes DPID-felderít
+        self._last_dps = {}
+        self._last_full_ts = 0
 
     def add_dps_to_request(self, d):
         if isinstance(d, dict):
             self._dps_to_request.update({str(k): v for k, v in d.items()})
 
+
+
     async def status(self):
         loop = asyncio.get_running_loop()
-        if self._first_status:
-            # el alkalommal kérjünk TELJES DPID listát és értékeket
-            res = await loop.run_in_executor(None, self._dev.detect_available_dps)
-            self._first_status = False
-            if not res:
-                return {}
-            # detect_available_dps gyakran sima dict-et ad: {'1': 123, ...}
-            if isinstance(res, dict) and "dps" not in res:
-                dps = res
-            else:
-                dps = (res or {}).get("dps", {})
-            _LOGGER.debug("pytuya shim: initial detect dps keys=%s", list(dps.keys()))
-            return dps
-        else:
-            res = await loop.run_in_executor(None, self._dev.status)
-            if not res:
-                return {}
-            dps = res.get("dps", res)
-            _LOGGER.debug("pytuya shim: status dps keys=%s", list(dps.keys()))
-            return dps
+        need_full = self._first_status or (time.time() - self._last_full_ts > 30)
+
+        if need_full:
+           res = await loop.run_in_executor(None, self._dev.detect_available_dps)
+           self._first_status = False
+           self._last_full_ts = time.time()
+           if not res:
+               return dict(self._last_dps)
+           dps = res if isinstance(res, dict) and "dps" not in res else (res or {}).get("dps", {})
+         else:
+             res = await loop.run_in_executor(None, self._dev.status)
+             if not res:
+                 return dict(self._last_dps)
+             dps = res.get("dps", res)
+
+         if isinstance(dps, dict):
+             self._last_dps.update(dps)
+
+         return dict(self._last_dps)
 
     async def update_dps(self):
         dps = await self.status()
