@@ -2,7 +2,7 @@
 import logging
 from functools import partial
 
-from homeassistant.components.sensor import SensorStateClass
+from homeassistant.components.sensor import SensorDeviceClass, SensorStateClass
 
 import voluptuous as vol
 from homeassistant.components.sensor import DEVICE_CLASSES, DOMAIN
@@ -46,12 +46,9 @@ class LocaltuyaSensor(LocalTuyaEntity):
         self._state = STATE_UNKNOWN
 
     @property
-    def state_class(self):
-        """Energy dashboard kompatibilitás az energia szenzorokra."""
-        # DP 1 = forward_energy_total, 23 = reverse_energy_total, 24 = active_energy_total
-        if self._config.get(CONF_DEVICE_CLASS) == "energy" or self._dp_id in (1, 23, 24):
-            return SensorStateClass.TOTAL_INCREASING
-        return None
+    def state(self):
+        """Return sensor state."""
+        return self._state
 
     @property
     def device_class(self):
@@ -77,4 +74,4 @@ class LocaltuyaSensor(LocalTuyaEntity):
         return
 
 
-async_setup_entry = partial(async_setup_entry, DOMAIN, LocaltuyaSensor, flow_schema)
+async_setup_entry = partial(async_setup_entry, DOMAIN, LocaltuyaSensor, flow_schema) "
