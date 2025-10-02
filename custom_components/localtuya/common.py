@@ -404,23 +404,29 @@ class LocalTuyaEntity(RestoreEntity, pytuya.ContextualLogger):
             self.status_restored(state)
         def _update_handler(status):
             """Update entity state when status was updated."""
-            # Ha None jön (disconnect jelzés), NE töröljük a státuszt – csak UI frissítés
+            # Disconnect jelzés esetén ne töröljük a státuszt
             if status is None:
                 self.schedule_update_ha_state()
                 return
 
-            # Részleges státuszból ne vesszenek el kulcsok (RAW 6/7/8) – merge az előzővel
             merged = (self._status or {}).copy()
             if isinstance(status, dict):
-                merged.update(status)
+                # Kulcs-normalizálás
+                incoming = {str(k): v for k, v in status.items()}
+
+                # Saját DP (pl. Phase C = 8) ne íródjon felül None/üres/unknown értékkel
+                mydp = str(self._dp_id)
+                if mydp in incoming and (incoming[mydp] is None or incoming[mydp] == '' or str(incoming[mydp]).lower() == 'unknown'):
+                    incoming.pop(mydp)
+
+                merged.update(incoming)
 
             if self._status != merged:
                 self._status = merged
-                # Csak akkor hívd a status_updated()-et, ha a SAJÁT DP benne van
-                if str(self._dp_id) in self._status:
+                mydp = str(self._dp_id)
+                if mydp in self._status and self._status.get(mydp) is not None:
                     self.status_updated()
 
-            # UI frissítés
             self.schedule_update_ha_state()
 
         signal = f"localtuya_{self._dev_config_entry[CONF_DEVICE_ID]}"

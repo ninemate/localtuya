@@ -1265,7 +1265,7 @@ class _TTInterface:
 
         # --- KULCSNORMALIZALAS ---
         if isinstance(dps, dict):
-            dps = {str(k): v for k, v in dps.items()}
+            dps = {str(k): v for k, v in dps.items() if v is not None}
             self._last_dps.update(dps)
 
         return dict(self._last_dps)
