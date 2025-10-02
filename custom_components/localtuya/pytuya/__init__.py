@@ -1237,8 +1237,7 @@ class _TTInterface:
             except Exception:
                 pass
         self._dps_to_request = {}
-        self._first_status = True
-        self._first_status = True  # els hívásnál teljes DPID-felderít
+        self._first_status = True          # első hívásnál teljes DPID-felderítés
         self._last_dps = {}
         self._last_full_ts = 0
 
@@ -1246,35 +1245,39 @@ class _TTInterface:
         if isinstance(d, dict):
             self._dps_to_request.update({str(k): v for k, v in d.items()})
 
-
-
     async def status(self):
         loop = asyncio.get_running_loop()
         need_full = self._first_status or (time.time() - self._last_full_ts > 30)
 
         if need_full:
-           res = await loop.run_in_executor(None, self._dev.detect_available_dps)
-           self._first_status = False
-           self._last_full_ts = time.time()
-           if not res:
-               return dict(self._last_dps)
-           dps = res if isinstance(res, dict) and "dps" not in res else (res or {}).get("dps", {})
-         else:
-             res = await loop.run_in_executor(None, self._dev.status)
-             if not res:
-                 return dict(self._last_dps)
-             dps = res.get("dps", res)
-       #fix
-         if isinstance(dps, dict):
-             self._last_dps.update(dps)
+            res = await loop.run_in_executor(None, self._dev.detect_available_dps)
+            self._first_status = False
+            self._last_full_ts = time.time()
+            if not res:
+                return dict(self._last_dps)
+            if isinstance(res, dict) and "dps" not in res:
+                dps = res
+            else:
+                dps = (res or {}).get("dps", {})
+        else:
+            res = await loop.run_in_executor(None, self._dev.status)
+            if not res:
+                return dict(self._last_dps)
+            dps = res.get("dps", res)
 
-         return dict(self._last_dps)
+        if isinstance(dps, dict):
+            self._last_dps.update(dps)
+
+        return dict(self._last_dps)
 
     async def update_dps(self):
         dps = await self.status()
         if self._listener and hasattr(self._listener, "status_updated"):
             try:
                 self._listener.status_updated(dps)
+            except Exception:
+                self.exception("Error while updating DPS")
+
             except Exception as e:
                 _LOGGER.debug("listener.status_updated failed: %s", e)
 
