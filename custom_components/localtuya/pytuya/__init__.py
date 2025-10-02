@@ -1194,3 +1194,108 @@ async def connect(
 
     await asyncio.wait_for(on_connected, timeout=timeout)
     return protocol
+
+# --- TinyTuya backend shim for protocol >= 3.5 ---
+import asyncio
+import logging
+
+_LOGGER = logging.getLogger(__name__)
+
+# mentsük el az EREDETI connect-et (3.1–3.4-hez kelleni fog)
+try:
+    _ORIG_CONNECT = connect  # az eredeti pytuya.connect
+except NameError:
+    _ORIG_CONNECT = None
+
+# próbáljuk betölteni a tinytuya-t
+try:
+    import tinytuya
+    _HAS_TINYT = True
+except Exception:
+    _HAS_TINYT = False
+
+
+class _TTInterface:
+    """TinyTuya-alapú interface a LocalTuya által használt API-val."""
+
+    def __init__(self, host, dev_id, local_key, version, debug, listener=None):
+        self._listener = listener
+        self._dev = tinytuya.Device(dev_id, host, local_key)
+        # verzió beállítása (3.1–3.5); ha 3.5, itt működik a tinytuya
+        try:
+            self._dev.set_version(float(version))
+        except Exception as e:
+            _LOGGER.debug("tinytuya set_version(%s) failed: %s", version, e)
+        try:
+            self._dev.set_socketPersistent(True)
+            self._dev.set_socketTimeout(5.0)
+        except Exception:
+            pass
+        if debug:
+            try:
+                tinytuya.set_debug(True)
+            except Exception:
+                pass
+        self._dps_to_request = {}
+
+    def add_dps_to_request(self, d):
+        if isinstance(d, dict):
+            self._dps_to_request.update({str(k): v for k, v in d.items()})
+
+    async def status(self):
+        loop = asyncio.get_running_loop()
+        res = await loop.run_in_executor(None, self._dev.status)
+        # tinytuya {"dps": {...}}-t ad – a LocalTuya a dictet várja
+        if not res or "dps" not in res:
+            return {}
+        return res["dps"]
+
+    async def update_dps(self):
+        dps = await self.status()
+        if self._listener and hasattr(self._listener, "status_updated"):
+            try:
+                self._listener.status_updated(dps)
+            except Exception as e:
+                _LOGGER.debug("listener.status_updated failed: %s", e)
+
+    def start_heartbeat(self):
+        # no-op – tinytuya nem igényli külön
+        return
+
+    async def reset(self, dpid_list):
+        _LOGGER.debug("reset(%s) no-op TinyTuya backendnél", dpid_list)
+
+    async def set_dp(self, value, dp_index):
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, self._dev.set_value, int(dp_index), value)
+
+    async def set_dps(self, states: dict):
+        loop = asyncio.get_running_loop()
+        for k, v in states.items():
+            await loop.run_in_executor(None, self._dev.set_value, int(k), v)
+
+    async def close(self):
+        try:
+            self._dev.close()
+        except Exception:
+            pass
+
+
+async def connect(host, dev_id, local_key, version, debug=False, listener=None):
+    """Ha verzió >= 3.5 és van tinytuya, TinyTuya backend; különben eredeti pytuya."""
+    try:
+        v = float(version)
+    except Exception:
+        v = 3.3
+
+    if _HAS_TINYT and v >= 3.5:
+        return _TTInterface(host, dev_id, local_key, v, debug, listener)
+
+    if _ORIG_CONNECT is not None:
+        return await _ORIG_CONNECT(host, dev_id, local_key, version, debug, listener)
+
+    if _HAS_TINYT:
+        return _TTInterface(host, dev_id, local_key, v, debug, listener)
+
+    raise RuntimeError("No backend available for pytuya.connect()")
+
