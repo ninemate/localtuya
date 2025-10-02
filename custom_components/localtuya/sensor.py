@@ -2,7 +2,7 @@
 import logging
 from functools import partial
 
-from homeassistant.components.sensor import SensorDeviceClass, SensorStateClass
+from homeassistant.components.sensor import SensorStateClass
 
 import voluptuous as vol
 from homeassistant.components.sensor import DEVICE_CLASSES, DOMAIN
@@ -46,32 +46,22 @@ class LocaltuyaSensor(LocalTuyaEntity):
         self._state = STATE_UNKNOWN
 
     @property
-    def device_class(self):
-        """Return the class of this device."""
-        dc = self._config.get(CONF_DEVICE_CLASS)
-        # A config flow 'energy' stringjét alakítsuk enumra (új HA verziók kedvéért)
-        if dc == "energy":
-            return SensorDeviceClass.ENERGY
-        return dc
-
-    @property
     def state_class(self):
-        """Energy dashboard kompatibilitás: total_increasing az energia szenzorokra."""
+        """Energy dashboard kompatibilitás az energia szenzorokra."""
         # DP 1 = forward_energy_total, 23 = reverse_energy_total, 24 = active_energy_total
         if self._config.get(CONF_DEVICE_CLASS) == "energy" or self._dp_id in (1, 23, 24):
             return SensorStateClass.TOTAL_INCREASING
         return None
 
     @property
+    def device_class(self):
+        """Return the class of this device."""
+        return self._config.get(CONF_DEVICE_CLASS)
+
+    @property
     def unit_of_measurement(self):
         """Return the unit of measurement of this entity, if any."""
-        uom = self._config.get(CONF_UNIT_OF_MEASUREMENT)
-        # Ha energia szenzor és nincs megadva egység, legyen kWh
-        if (uom is None or uom == "") and (
-            self._config.get(CONF_DEVICE_CLASS) == "energy" or self._dp_id in (1, 23, 24)
-        ):
-            return "kWh"
-        return uom
+        return self._config.get(CONF_UNIT_OF_MEASUREMENT)
 
     def status_updated(self):
         """Device status was updated."""
