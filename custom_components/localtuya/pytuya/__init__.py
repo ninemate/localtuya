@@ -1236,6 +1236,7 @@ class _TTInterface:
             except Exception:
                 pass
         self._dps_to_request = {}
+        self._first_status = True
         self._first_status = True  # első hívásnál teljes DPID-felderítés
 
     def add_dps_to_request(self, d):
