@@ -30,6 +30,7 @@ def flow_schema(dps):
         ),
     }
 
+from homeassistant.components.sensor import SensorStateClass
 
 class LocaltuyaSensor(LocalTuyaEntity):
     """Representation of a Tuya sensor."""
@@ -49,6 +50,12 @@ class LocaltuyaSensor(LocalTuyaEntity):
     def state(self):
         """Return sensor state."""
         return self._state
+
+    @property
+    def state_class(self):
+        if self._config.get(CONF_DEVICE_CLASS) == "energy" or self._dp_id in (1, 23, 24):
+            return SensorStateClass.TOTAL_INCREASING
+        return None
 
     @property
     def device_class(self):
