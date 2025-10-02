@@ -1,7 +1,7 @@
 {
   "domain": "localtuya",
   "name": "LocalTuya integration",
-  "codeowners": [@ninemate],
+  "codeowners": ["@ninemate"],
   "config_flow": true,
   "dependencies": [],
   "documentation": "https://github.com/ninemate/localtuya/",
