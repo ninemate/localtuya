@@ -81,4 +81,4 @@ class LocaltuyaSensor(LocalTuyaEntity):
         return
 
 
-async_setup_entry = partial(async_setup_entry, DOMAIN, LocaltuyaSensor, flow_schema) "
+async_setup_entry = partial(async_setup_entry, DOMAIN, LocaltuyaSensor, flow_schema) 
