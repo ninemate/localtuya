@@ -1241,14 +1241,26 @@ class _TTInterface:
     def add_dps_to_request(self, d):
         if isinstance(d, dict):
             self._dps_to_request.update({str(k): v for k, v in d.items()})
-
-    async def status(self):
+     self._first_status = True
+  async def status(self):
         loop = asyncio.get_running_loop()
-        res = await loop.run_in_executor(None, self._dev.status)
-        # tinytuya {"dps": {...}}-t ad – a LocalTuya a dictet várja
-        if not res or "dps" not in res:
-            return {}
-        return res["dps"]
+        if self._first_status:
+            # első alkalommal kérjünk TELJES DPID listát és értékeket
+            res = await loop.run_in_executor(None, self._dev.detect_available_dps)
+            self._first_status = False
+            # detect_available_dps általában SIMA dict-et ad vissza: {'1':123,...}
+            if not res:
+                return {}
+            if isinstance(res, dict) and "dps" not in res:
+                return res  # már jó formában van
+            # ha mégis 'dps' alatt lenne:
+            return res.get("dps", {})
+        else:
+            # később normál status
+            res = await loop.run_in_executor(None, self._dev.status)
+            if not res:
+                return {}
+            return res.get("dps", res)  # ha nincs 'dps' kulcs, kezeld sima dictként 
 
     async def update_dps(self):
         dps = await self.status()
