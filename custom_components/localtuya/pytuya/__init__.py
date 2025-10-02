@@ -1195,19 +1195,19 @@ async def connect(
     await asyncio.wait_for(on_connected, timeout=timeout)
     return protocol
 
-# --- TinyTuya backend shim for protocol >= 3.5 ---
+# --- TinyTuya backend shim for protocol >= 3.5 (spaces-only indent) ---
 import asyncio
 import logging
 
 _LOGGER = logging.getLogger(__name__)
 
-# mentsük el az EREDETI connect-et (3.1–3.4-hez kelleni fog)
+# Eredeti connect elmentése (3.1–3.4-hez)
 try:
-    _ORIG_CONNECT = connect  # az eredeti pytuya.connect
+    _ORIG_CONNECT = connect  # type: ignore[name-defined]
 except NameError:
     _ORIG_CONNECT = None
 
-# próbáljuk betölteni a tinytuya-t
+# tinytuya betöltése
 try:
     import tinytuya
     _HAS_TINYT = True
@@ -1216,19 +1216,18 @@ except Exception:
 
 
 class _TTInterface:
-    """TinyTuya-alapú interface a LocalTuya által használt API-val."""
+    """TinyTuya-alapú backend LocalTuya által elvárt API-val."""
 
     def __init__(self, host, dev_id, local_key, version, debug, listener=None):
         self._listener = listener
         self._dev = tinytuya.Device(dev_id, host, local_key)
-        # verzió beállítása (3.1–3.5); ha 3.5, itt működik a tinytuya
         try:
             self._dev.set_version(float(version))
         except Exception as e:
             _LOGGER.debug("tinytuya set_version(%s) failed: %s", version, e)
         try:
             self._dev.set_socketPersistent(True)
-            self._dev.set_socketTimeout(5.0)
+            self._dev.set_socketTimeout(7.0)
         except Exception:
             pass
         if debug:
@@ -1237,30 +1236,34 @@ class _TTInterface:
             except Exception:
                 pass
         self._dps_to_request = {}
+        self._first_status = True  # első hívásnál teljes DPID-felderítés
 
     def add_dps_to_request(self, d):
         if isinstance(d, dict):
             self._dps_to_request.update({str(k): v for k, v in d.items()})
-     self._first_status = True
-  async def status(self):
+
+    async def status(self):
         loop = asyncio.get_running_loop()
         if self._first_status:
             # első alkalommal kérjünk TELJES DPID listát és értékeket
             res = await loop.run_in_executor(None, self._dev.detect_available_dps)
             self._first_status = False
-            # detect_available_dps általában SIMA dict-et ad vissza: {'1':123,...}
             if not res:
                 return {}
+            # detect_available_dps gyakran sima dict-et ad: {'1': 123, ...}
             if isinstance(res, dict) and "dps" not in res:
-                return res  # már jó formában van
-            # ha mégis 'dps' alatt lenne:
-            return res.get("dps", {})
+                dps = res
+            else:
+                dps = (res or {}).get("dps", {})
+            _LOGGER.debug("pytuya shim: initial detect dps keys=%s", list(dps.keys()))
+            return dps
         else:
-            # később normál status
             res = await loop.run_in_executor(None, self._dev.status)
             if not res:
                 return {}
-            return res.get("dps", res)  # ha nincs 'dps' kulcs, kezeld sima dictként 
+            dps = res.get("dps", res)
+            _LOGGER.debug("pytuya shim: status dps keys=%s", list(dps.keys()))
+            return dps
 
     async def update_dps(self):
         dps = await self.status()
@@ -1271,7 +1274,7 @@ class _TTInterface:
                 _LOGGER.debug("listener.status_updated failed: %s", e)
 
     def start_heartbeat(self):
-        # no-op – tinytuya nem igényli külön
+        # tinytuya-n nem szükséges, no-op
         return
 
     async def reset(self, dpid_list):
@@ -1300,7 +1303,10 @@ async def connect(host, dev_id, local_key, version, debug=False, listener=None):
     except Exception:
         v = 3.3
 
+    _LOGGER.debug("pytuya shim: requested version=%s, tinytuya=%s", version, _HAS_TINYT)
+
     if _HAS_TINYT and v >= 3.5:
+        _LOGGER.debug("pytuya shim: USING TinyTuya backend (v=%s)", v)
         return _TTInterface(host, dev_id, local_key, v, debug, listener)
 
     if _ORIG_CONNECT is not None:
