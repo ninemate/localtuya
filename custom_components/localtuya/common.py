@@ -435,7 +435,7 @@ class LocalTuyaEntity(RestoreEntity, pytuya.ContextualLogger):
             async_dispatcher_connect(self.hass, signal, _update_handler)
         )
 
-       signal = f"localtuya_entity_{self._dev_config_entry[CONF_DEVICE_ID]}"
+        signal = f"localtuya_entity_{self._dev_config_entry[CONF_DEVICE_ID]}"
         async_dispatcher_send(self.hass, signal, self.entity_id)
 
     @property
