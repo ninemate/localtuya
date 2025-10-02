@@ -53,8 +53,16 @@ class LocaltuyaSensor(LocalTuyaEntity):
 
     @property
     def state_class(self):
-        if self._config.get(CONF_DEVICE_CLASS) == "energy" or self._dp_id in (1, 23, 24):
+        dc = self.device_class
+        if dc == SensorDeviceClass.ENERGY:
+            # kWh összesített értékek (DP 1/23/�� Energy dashboard kompatibilis
             return SensorStateClass.TOTAL_INCREASING
+        if dc in (
+            SensorDeviceClass.POWER,            # pl. Active power
+            SensorDeviceClass.REACTIVE_POWER,   # Reactive power
+            SensorDeviceClass.POWER_FACTOR,     # Power factor
+        ):
+            return SensorStateClass.MEASUREMENT
         return None
 
     @property
