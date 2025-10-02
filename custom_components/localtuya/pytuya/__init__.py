@@ -1201,7 +1201,7 @@ import logging
 
 _LOGGER = logging.getLogger(__name__)
 
-# Eredeti connect elmentése (3.1–3.4-hez)
+# Eredeti connect elmentés)
 try:
     _ORIG_CONNECT = connect  # type: ignore[name-defined]
 except NameError:
@@ -1237,7 +1237,7 @@ class _TTInterface:
                 pass
         self._dps_to_request = {}
         self._first_status = True
-        self._first_status = True  # első hívásnál teljes DPID-felderítés
+        self._first_status = True  # els hívásnál teljes DPID-felderítés
 
     def add_dps_to_request(self, d):
         if isinstance(d, dict):
@@ -1246,7 +1246,7 @@ class _TTInterface:
     async def status(self):
         loop = asyncio.get_running_loop()
         if self._first_status:
-            # első alkalommal kérjünk TELJES DPID listát és értékeket
+            # el alkalommal kérjünk TELJES DPID listát és értékeket
             res = await loop.run_in_executor(None, self._dev.detect_available_dps)
             self._first_status = False
             if not res:
@@ -1275,8 +1275,18 @@ class _TTInterface:
                 _LOGGER.debug("listener.status_updated failed: %s", e)
 
     def start_heartbeat(self):
-        # tinytuya-n nem szükséges, no-op
-        return
+        # periodikusan kérünk státuszt, hogy a kapcsolat életben maradjon
+        if getattr(self, "_hb_task", None):
+            return
+        loop = asyncio.get_running_loop()
+        async def _hb():
+            while True:
+                try:
+                    await self.update_dps()
+                except Exception:
+                    pass
+                await asyncio.sleep(10)  # �12 mp közt bárm
+        self._hb_task = loop.create_task(_hb())
 
     async def reset(self, dpid_list):
         _LOGGER.debug("reset(%s) no-op TinyTuya backendnél", dpid_list)
