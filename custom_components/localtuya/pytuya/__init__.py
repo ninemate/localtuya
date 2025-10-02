@@ -1264,7 +1264,7 @@ class _TTInterface:
              if not res:
                  return dict(self._last_dps)
              dps = res.get("dps", res)
-
+       #fix
          if isinstance(dps, dict):
              self._last_dps.update(dps)
 
