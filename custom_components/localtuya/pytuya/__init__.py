@@ -1237,7 +1237,7 @@ class _TTInterface:
             except Exception:
                 pass
         self._dps_to_request = {}
-        self._first_status = True          # első hívásnál teljes DPID-felderítés
+        self._first_status = True         
         self._last_dps = {}
         self._last_full_ts = 0
 
@@ -1246,6 +1246,7 @@ class _TTInterface:
             self._dps_to_request.update({str(k): v for k, v in d.items()})
 
     async def status(self):
+        import time
         loop = asyncio.get_running_loop()
         need_full = self._first_status or (time.time() - self._last_full_ts > 30)
 
@@ -1255,17 +1256,16 @@ class _TTInterface:
             self._last_full_ts = time.time()
             if not res:
                 return dict(self._last_dps)
-            if isinstance(res, dict) and "dps" not in res:
-                dps = res
-            else:
-                dps = (res or {}).get("dps", {})
+            dps = res if isinstance(res, dict) and "dps" not in res else (res or {}).get("dps", {})
         else:
             res = await loop.run_in_executor(None, self._dev.status)
             if not res:
                 return dict(self._last_dps)
             dps = res.get("dps", res)
 
+        # --- KULCSNORMALIZALAS ---
         if isinstance(dps, dict):
+            dps = {str(k): v for k, v in dps.items()}
             self._last_dps.update(dps)
 
         return dict(self._last_dps)
@@ -1292,7 +1292,7 @@ class _TTInterface:
                     await self.update_dps()
                 except Exception:
                     pass
-                await asyncio.sleep(10)  # �12 mp közt bárm
+                await asyncio.sleep(3)  # �12 mp közt bárm
         self._hb_task = loop.create_task(_hb())
 
     async def reset(self, dpid_list):
