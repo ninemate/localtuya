@@ -1,4 +1,6 @@
 """Platform to present any Tuya DP as a sensor."""
+import base64
+import binascii
 import logging
 from functools import partial
 
@@ -74,6 +76,19 @@ class LocaltuyaSensor(LocalTuyaEntity):
     def unit_of_measurement(self):
         """Return the unit of measurement of this entity, if any."""
         return self._config.get(CONF_UNIT_OF_MEASUREMENT)
+
+    @property
+    def extra_state_attributes(self):
+        attrs = dict(super().extra_state_attributes)
+        state = self._state
+        if isinstance(state, str):
+            try:
+                decoded = base64.b64decode(state, validate=True)
+            except (binascii.Error, ValueError):
+                decoded = None
+            if decoded:
+                attrs.setdefault("raw_bytes", list(decoded))
+        return attrs
 
     def status_updated(self):
         """Device status was updated."""
