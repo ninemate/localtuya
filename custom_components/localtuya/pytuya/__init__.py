@@ -1237,62 +1237,98 @@ class _TTInterface:
             except Exception:
                 pass
         self._dps_to_request = {}
-        self._first_status = True         
+        self._first_status = True
         self._last_dps = {}
         self._last_full_ts = 0
+        self._status_lock = asyncio.Lock()
+        self._status_task = None
+        self._hb_task = None
+        self._closing = False
+        self.has_internal_polling = True
 
     def add_dps_to_request(self, d):
         if isinstance(d, dict):
             self._dps_to_request.update({str(k): v for k, v in d.items()})
 
-    async def status(self):
+    def _normalize_dps(self, dps):
+        if not isinstance(dps, dict):
+            return {}
+        normalized = {}
+        for k, v in dps.items():
+            if v is None:
+                continue
+            if isinstance(v, str) and v.strip().lower() in ("", "unknown", "unavailable"):
+                continue
+            normalized[str(k)] = v
+        return normalized
+
+    async def _status_impl(self):
         import time
         loop = asyncio.get_running_loop()
         need_full = self._first_status or (time.time() - self._last_full_ts > 30)
 
-        if need_full:
-            res = await loop.run_in_executor(None, self._dev.detect_available_dps)
-            self._first_status = False
-            self._last_full_ts = time.time()
-            if not res:
-                return dict(self._last_dps)
-            dps = res if isinstance(res, dict) and "dps" not in res else (res or {}).get("dps", {})
-        else:
-            res = await loop.run_in_executor(None, self._dev.status)
-            if not res:
-                return dict(self._last_dps)
-            dps = res.get("dps", res)
+        try:
+            if need_full:
+                res = await loop.run_in_executor(None, self._dev.detect_available_dps)
+                self._first_status = False
+                self._last_full_ts = time.time()
+            else:
+                res = await loop.run_in_executor(None, self._dev.status)
+        except Exception as e:
+            _LOGGER.debug("tinytuya status failed: %s", e)
+            return dict(self._last_dps)
 
-        # --- KULCSNORMALIZALAS ---
-        if isinstance(dps, dict):
-            dps = {str(k): v for k, v in dps.items() if v is not None}
+        if not res:
+            return dict(self._last_dps)
+
+        if isinstance(res, dict):
+            dps = res if "dps" not in res else res.get("dps", {})
+        else:
+            dps = {}
+
+        dps = self._normalize_dps(dps)
+        if dps:
             self._last_dps.update(dps)
 
         return dict(self._last_dps)
 
+    async def status(self):
+        if self._closing:
+            return dict(self._last_dps)
+        async with self._status_lock:
+            task = self._status_task
+            if task is None or task.done():
+                task = asyncio.create_task(self._status_impl())
+                self._status_task = task
+        try:
+            return await task
+        finally:
+            if task.done() and self._status_task is task:
+                self._status_task = None
+
     async def update_dps(self):
+        if self._closing:
+            return
         dps = await self.status()
         if self._listener and hasattr(self._listener, "status_updated"):
             try:
                 self._listener.status_updated(dps)
-            except Exception:
-                self.exception("Error while updating DPS")
-
             except Exception as e:
                 _LOGGER.debug("listener.status_updated failed: %s", e)
 
     def start_heartbeat(self):
-        # periodikusan kérünk státuszt, hogy a kapcsolat életben maradjon
-        if getattr(self, "_hb_task", None):
+        if self._closing:
+            return
+        if self._hb_task is not None and not self._hb_task.done():
             return
         loop = asyncio.get_running_loop()
         async def _hb():
-            while True:
+            while not self._closing:
                 try:
                     await self.update_dps()
-                except Exception:
-                    pass
-                await asyncio.sleep(3)  # �12 mp közt bárm
+                except Exception as e:
+                    _LOGGER.debug("heartbeat update failed: %s", e)
+                await asyncio.sleep(3)
         self._hb_task = loop.create_task(_hb())
 
     async def reset(self, dpid_list):
@@ -1308,6 +1344,15 @@ class _TTInterface:
             await loop.run_in_executor(None, self._dev.set_value, int(k), v)
 
     async def close(self):
+        self._closing = True
+        if self._hb_task is not None:
+            self._hb_task.cancel()
+            try:
+                await self._hb_task
+            except asyncio.CancelledError:
+                pass
+            self._hb_task = None
+        self._listener = None
         try:
             self._dev.close()
         except Exception:
