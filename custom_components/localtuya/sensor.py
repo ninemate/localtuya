@@ -82,12 +82,15 @@ class LocaltuyaSensor(LocalTuyaEntity):
         attrs = dict(super().extra_state_attributes)
         state = self._state
         if isinstance(state, str):
-            try:
-                decoded = base64.b64decode(state, validate=True)
-            except (binascii.Error, ValueError):
-                decoded = None
-            if decoded:
-                attrs.setdefault("raw_bytes", list(decoded))
+            raw = state.strip()
+            if raw:
+                padding = "=" * ((4 - len(raw) % 4) % 4)
+                try:
+                    decoded = base64.b64decode(raw + padding)
+                except (binascii.Error, ValueError):
+                    decoded = None
+                if decoded:
+                    attrs.setdefault("raw_bytes", list(decoded))
         return attrs
 
     def status_updated(self):
